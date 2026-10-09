@@ -1,0 +1,13 @@
+[project]
+name = "touchsight-edu"
+version = "0.1.0"
+description = "AI-native tactile STEM learning prototype for a 40x50 H0-H3 display"
+requires-python = ">=3.11"
+dependencies = ["Pillow>=10.0"]
+
+[project.scripts]
+touchsight-edu = "touchsight_edu.__main__:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

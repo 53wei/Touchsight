@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#080b12" />
+  <title>TouchSight EDU · 触觉学习工作台</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#appMain">跳到主要内容</a>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#home" data-route="home" aria-label="返回 TouchSight EDU 首页">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        <span><b>TouchSight</b><small>EDU</small></span>
+      </a>
+      <nav class="primary-nav" aria-label="主导航">
+        <a class="active" href="#home" data-route="home">开始</a>
+        <a href="#create" data-route="create">创作</a>
+        <a href="#history" data-route="history">历史</a>
+        <a href="#device" data-route="device">设备</a>
+      </nav>
+    </header>
+
+    <main id="appMain" class="app-main">
+      <section class="app-page home-page active" data-page="home">
+        <canvas id="heroField" aria-hidden="true"></canvas>
+        <div class="home-vignette" aria-hidden="true"></div>
+        <div class="home-copy">
+          <h1>让一张图，<br />变成可以触摸的知识。</h1>
+          <p>从普通图片直接生成触觉点阵，或让 AI 先理解教学主体，再重建成清晰的曲线与轮廓。</p>
+          <div class="launch-actions" aria-label="选择创作入口">
+            <button type="button" class="launch-primary" data-start-mode="ai">
+              <span class="launch-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg>
+              </span>
+              <span><b>AI 教学图</b><small>理解题目，只留下学生需要触摸的主体</small></span>
+              <svg class="launch-arrow" aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h13M14 7l5 5-5 5"/></svg>
+            </button>
+            <button type="button" class="launch-secondary" data-start-mode="direct">
+              <span class="launch-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m6 16 4-4 3 3 2-2 3 3M8 9h.01"/></svg>
+              </span>
+              <span><b>图片转点阵</b><small>保留整张图片的轮廓与明暗层级</small></span>
+              <svg class="launch-arrow" aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h13M14 7l5 5-5 5"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="app-page studio-page" data-page="create" hidden>
+        <aside class="workflow-panel" aria-label="创作流程">
+          <div class="workflow-head">
+            <div><small>触觉图创作</small><h2 id="workflowTitle">准备素材</h2></div>
+            <button class="icon-button" type="button" data-route="home" aria-label="关闭创作并返回首页">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+            </button>
+          </div>
+          <div class="workflow-steps" role="tablist" aria-label="创作步骤">
+            <button id="stepSource" type="button" class="active" data-workspace-step="source" role="tab" aria-controls="paneSource">素材</button>
+            <button id="stepIntent" type="button" data-workspace-step="intent" role="tab" aria-controls="paneIntent">教学意图</button>
+            <button id="stepResult" type="button" data-workspace-step="result" role="tab" aria-controls="paneResult">触觉结果</button>
+          </div>
+
+          <div class="workflow-scroll">
+            <section id="paneSource" class="workflow-pane active" data-workspace-pane="source" role="tabpanel" aria-labelledby="stepSource">
+              <div class="mode-switch" aria-label="选择生成入口">
+                <button class="mode-card active" type="button" data-mode="direct"><b>图片直接转点阵</b><small>忠实保留原图结构</small></button>
+                <button class="mode-card" type="button" data-mode="ai"><b>AI 教学图</b><small>理解后重建主体</small></button>
+              </div>
+              <div class="section-heading">
+                <div><h3 id="inputTitle">上传要转换的图片</h3><p id="inputHint">整张图片会按比例进入点阵，不经过旧项目的全景裁剪。</p></div>
+                <span id="inputMeta" class="meta-chip">等待图片</span>
+              </div>
+              <label id="dropZone" class="drop-zone">
+                <img id="sourcePreview" alt="上传图片预览" width="1200" height="900" decoding="async" hidden />
+                <span id="emptyUpload" class="empty-upload">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 13v6h14v-6"/></svg>
+                  <b id="uploadLabel">选择或拖入图片</b>
+                  <small>PNG、JPEG 或 WebP · 最大 12 MB</small>
+                </span>
+                <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+              </label>
+              <button id="clearButton" class="text-button" type="button">移除当前图片</button>
+            </section>
+
+            <section id="paneIntent" class="workflow-pane" data-workspace-pane="intent" role="tabpanel" aria-labelledby="stepIntent" data-ai-context hidden>
+              <div class="section-heading"><div><h3>告诉 AI 这节课要学什么</h3><p>信息越明确，触觉图越干净。上传题目截图时，默认只提取教学主体。</p></div></div>
+              <div class="ai-context">
+                <label><span>学科</span><input id="subject" name="subject" value="数学" placeholder="例如：数学、物理、地理…" autocomplete="off" /></label>
+                <label><span>学习目标</span><input id="learningGoal" name="learning-goal" value="理解抛物线的形状" placeholder="例如：理解抛物线的形状…" autocomplete="off" /></label>
+                <label><span>教学内容 / 题目</span><textarea id="lessonContent" name="lesson-content" rows="3" autocomplete="off">识别抛物线的开口方向与曲线轮廓</textarea></label>
+                <label><span>教师指令</span><textarea id="instruction" name="instruction" rows="3" autocomplete="off">只保留抛物线本身，删除题干、公式、数字、字母、刻度和坐标轴。</textarea></label>
+              </div>
+              <div class="ai-render-choice" aria-label="选择教学图生成方式">
+                <button type="button" class="active" data-ai-render="scene" aria-pressed="true"><b>根据文字绘图</b><small>适合函数与简单几何</small></button>
+                <button type="button" data-ai-render="vision" aria-pressed="false"><b>看图提取主体</b><small>去掉文字、数字和坐标轴</small></button>
+                <button type="button" data-ai-render="image" aria-pressed="false"><b>原图直接转点阵</b><small>不做语义删减</small></button>
+              </div>
+            </section>
+
+            <section id="paneResult" class="workflow-pane result-pane" data-workspace-pane="result" role="tabpanel" aria-labelledby="stepResult" hidden>
+              <div class="result-heading"><span id="modeBadge" class="meta-chip">IDLE</span><h3 id="surfaceTitle">等待生成</h3><p id="surfaceSummary">生成完成后，这里会解释学生应该触摸到什么。</p></div>
+              <div id="generationProof" class="generation-proof" hidden>
+                <span class="proof-dot" aria-hidden="true"></span>
+                <div><b id="generationProofTitle">等待生成来源</b><small id="generationProofDetail"></small></div>
+              </div>
+              <section id="teachingPlan" class="teaching-plan" aria-labelledby="teachingPlanTitle" hidden>
+                <div class="plan-heading"><h4 id="teachingPlanTitle">这节课如何呈现</h4><span>3 步触摸路径</span></div>
+                <div id="teachingSteps" class="teaching-steps"></div>
+              </section>
+              <div id="warnings" class="warnings" aria-live="polite"></div>
+              <div id="regions" class="regions"></div>
+              <div class="revision-block">
+                <h4>继续调整这张图</h4>
+                <div class="command-presets">
+                  <button type="button">加入 y=2x² 对比</button><button type="button">放大顶点</button><button type="button">隐藏坐标轴</button><button type="button">突出主曲线</button>
+                </div>
+                <div class="command-row"><input id="commandInput" name="revision-command" placeholder="例如：只显示顶点附近…" autocomplete="off" /><button id="commandButton" type="button" disabled>生成下一帧</button></div>
+              </div>
+              <details><summary>查看当前 50 × 40 高度矩阵</summary><pre id="matrixText">等待生成…</pre></details>
+            </section>
+          </div>
+          <div id="studioActions" class="studio-actions">
+            <button id="compileButton" class="primary-action" type="button" disabled>转换成点阵</button>
+            <span id="actionAssist">上传图片后即可生成</span>
+          </div>
+        </aside>
+
+        <section class="tactile-stage" aria-label="触觉表面预览">
+          <div class="stage-toolbar">
+            <div class="frame-status"><span id="frameIdentity">Frame #0 · 40×50</span><small id="frameStats">0 个凸点</small></div>
+            <div class="view-switch" role="group" aria-label="切换预览视图"><button type="button" data-view="2d" class="active" aria-pressed="true">俯视</button><button type="button" data-view="3d" aria-pressed="false">3D Pin</button></div>
+          </div>
+          <div class="surface-wrap">
+            <canvas id="grid2d" width="800" height="1000" aria-label="40 列 50 行触觉高度矩阵"></canvas>
+            <div id="surface3d" class="surface-3d" hidden aria-label="40 列 50 行触觉板三维模拟"></div>
+            <div id="loading" class="loading" role="status" aria-live="polite" hidden>
+              <span class="scan-orbit" aria-hidden="true"></span>
+              <b id="loadingTitle">正在理解并重建触觉结构…</b>
+              <small id="loadingHint">文字、公式和坐标信息不会进入主体图形</small>
+              <div class="generation-phases" aria-label="生成进度">
+                <span data-generation-phase="understand">理解输入</span>
+                <span data-generation-phase="plan">规划教学</span>
+                <span data-generation-phase="compile">编译点阵</span>
+              </div>
+            </div>
+          </div>
+          <div class="stage-footer">
+            <span class="height-legend" aria-label="触觉高度：H0、H1、H2、H3"><i class="h0" aria-hidden="true"></i>H0 <i class="h1" aria-hidden="true"></i>H1 <i class="h2" aria-hidden="true"></i>H2 <i class="h3" aria-hidden="true"></i>H3</span>
+            <div><button id="lowerButton" class="stage-button" type="button">全部落下</button><button id="replayButton" class="stage-button" type="button">重新升起</button><button class="stage-button emphasized" type="button" data-route="device">发送到设备</button></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="app-page collection-page" data-page="history" hidden>
+        <div class="collection-head"><div><h1>生成历史</h1><p>恢复任何一次触觉图，不会再次调用模型。</p></div><button type="button" class="primary-action compact" data-start-mode="ai">创建新触觉图</button></div>
+        <div id="historyList" class="history-list"><p class="history-empty">还没有历史记录。</p></div>
+      </section>
+
+      <section class="app-page device-page" data-page="device" hidden>
+        <div class="device-copy">
+          <h1>设备输出</h1>
+          <p>软件端已经统一输出 40 × 50、H0—H3 四级矩阵。实体控制协议冻结后，仍使用同一份帧数据。</p>
+          <div class="device-state"><span aria-hidden="true"></span><div><b>硬件桥接状态</b><p id="hardwareNote">正在读取设备配置…</p></div></div>
+          <button id="publishButton" class="primary-action compact" type="button" disabled>发送当前帧</button>
+        </div>
+        <div class="device-diagram" aria-label="软件到触觉板的数据流程">
+          <div><b>01</b><span>触觉场景</span></div><i aria-hidden="true"></i><div><b>02</b><span>2-bit 高度帧</span></div><i aria-hidden="true"></i><div><b>03</b><span>ESP32 / HTTP Bridge</span></div><i aria-hidden="true"></i><div><b>04</b><span>2000 触点</span></div>
+        </div>
+      </section>
+    </main>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

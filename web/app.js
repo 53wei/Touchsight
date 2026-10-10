@@ -41,6 +41,7 @@ let activeGenerationController = null;
 let currentSurface = null;
 let shownFrame = null;
 let pinRenderer = null;
+let heroFieldController = null;
 let toastTimer = 0;
 let generationTimers = [];
 
@@ -115,6 +116,7 @@ function resetAiContextForNewImage() {
 function setRoute(nextRoute, updateHash = true) {
   const route = routeNames.has(nextRoute) ? nextRoute : "home";
   activeRoute = route;
+  heroFieldController?.setActive(route === "home");
   ui.pages.forEach((page) => {
     const active = page.dataset.page === route;
     page.hidden = !active;
@@ -651,13 +653,18 @@ function initHeroField(canvas) {
   if (!canvas) return null;
   const context = canvas.getContext("2d");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let running = !reducedMotion;
+  const parent = canvas.parentElement;
+  const cols = 40;
+  const rows = 50;
+  const heightColors = ["#17232d", "#6e9b97", "#9dd7d0", "#d8f7f3"];
+  let active = false;
   let frameRequest = 0;
-  const animationStarted = performance.now();
+  let lastPaint = 0;
   let width = 0;
   let height = 0;
   let pointerX = .78;
   let pointerY = .42;
+  let pointerInside = false;
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -667,58 +674,133 @@ function initHeroField(canvas) {
     canvas.width = Math.round(width * ratio);
     canvas.height = Math.round(height * ratio);
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    draw(performance.now());
   }
 
   function draw(time = 0) {
     context.clearRect(0, 0, width, height);
-    const gap = Math.max(22, Math.min(34, width / 44));
-    const startX = Math.max(0, width * .34);
-    const centerX = width * (.73 + (pointerX - .5) * .035);
-    const baseY = height * (.37 + (pointerY - .5) * .025);
-    const pulse = reducedMotion ? 0 : Math.sin(time * .0012) * 8;
+    const mobile = width < 760;
+    const fieldHeight = height * (mobile ? .5 : .78);
+    const gap = Math.max(mobile ? 6.2 : 8, Math.min(22, fieldHeight / (rows - 1), width * (mobile ? .96 : .48) / (cols - 1)));
+    const gridHeight = gap * (rows - 1);
+    const centerX = width * (mobile ? .62 : .79) + (pointerX - .5) * (mobile ? 5 : 12);
+    const centerY = height * (mobile ? .75 : .5) + (pointerY - .5) * (mobile ? 4 : 8);
+    const top = centerY - gridHeight / 2;
+    const topHalf = gap * (cols - 1) * .45;
+    const bottomHalf = gap * (cols - 1) * .5;
+    const boardPad = gap * 1.15;
+    const seconds = reducedMotion ? 0 : time * .001;
+    const scanCenter = reducedMotion ? 31 : ((seconds * 3.2) % (rows + 22)) - 11;
 
-    for (let y = -gap; y < height + gap; y += gap) {
-      for (let x = startX; x < width + gap; x += gap) {
-        const normalized = (x - centerX) / Math.max(width * .34, 1);
-        const parabolaY = baseY + normalized * normalized * height * .5 + pulse;
-        const distance = Math.abs(y - parabolaY);
-        const curve = Math.max(0, 1 - distance / (gap * 1.7));
-        const field = (Math.sin(x * .018 + time * .0007) + Math.cos(y * .021 - time * .0005) + 2) / 4;
-        const strength = Math.max(curve, field * .18);
-        const radius = 1.15 + strength * 4.8;
+    const halo = context.createRadialGradient(centerX, centerY, gap * 2, centerX, centerY, gridHeight * .62);
+    halo.addColorStop(0, "rgba(140,232,220,.105)");
+    halo.addColorStop(.58, "rgba(72,119,126,.035)");
+    halo.addColorStop(1, "rgba(7,9,16,0)");
+    context.fillStyle = halo;
+    context.fillRect(Math.max(0, centerX - gridHeight), 0, Math.min(width, gridHeight * 2), height);
+
+    context.beginPath();
+    context.moveTo(centerX - topHalf - boardPad, top - boardPad);
+    context.lineTo(centerX + topHalf + boardPad, top - boardPad);
+    context.lineTo(centerX + bottomHalf + boardPad, top + gridHeight + boardPad);
+    context.lineTo(centerX - bottomHalf - boardPad, top + gridHeight + boardPad);
+    context.closePath();
+    context.fillStyle = "rgba(11,17,26,.66)";
+    context.fill();
+    context.strokeStyle = "rgba(216,247,243,.13)";
+    context.lineWidth = 1;
+    context.stroke();
+
+    for (let row = 0; row < rows; row += 1) {
+      const rowProgress = row / (rows - 1);
+      const perspective = .9 + rowProgress * .1;
+      const y = top + row * gap;
+      for (let col = 0; col < cols; col += 1) {
+        const x = centerX + (col - (cols - 1) / 2) * gap * perspective;
+        const normalizedX = (col - (cols - 1) / 2) / ((cols - 1) / 2);
+        const curveRow = 10.5 + normalizedX * normalizedX * 27 + Math.sin(seconds * 1.05 + normalizedX * 2.4) * (reducedMotion ? 0 : .28);
+        const curveDistance = Math.abs(row - curveRow);
+        const scanDistance = Math.abs(row - (scanCenter + col * .14));
+        const pointerDistance = Math.hypot(x - pointerX * width, y - pointerY * height) / Math.max(gap, 1);
+        let level = curveDistance < .58 ? 3 : curveDistance < 1.35 ? 2 : curveDistance < 2.15 ? 1 : 0;
+        if (!reducedMotion && scanDistance < 1.25) level = Math.max(level, scanDistance < .42 ? 2 : 1);
+        if (pointerInside && pointerDistance < 4.8) {
+          const pointerLevel = pointerDistance < 1.65 ? 3 : pointerDistance < 3.1 ? 2 : 1;
+          level = Math.max(level, pointerLevel);
+        }
+
+        const baseRadius = Math.max(1.05, gap * .13);
+        const lift = level * Math.max(1.1, gap * .13);
+        const tipX = x - lift * .34;
+        const tipY = y - lift;
+
         context.beginPath();
-        context.arc(x, y, radius, 0, Math.PI * 2);
-        context.fillStyle = curve > .18
-          ? `rgba(177, 255, 245, ${.22 + curve * .72})`
-          : `rgba(150, 173, 191, ${.07 + strength * .18})`;
+        context.arc(x, y, baseRadius * 1.55, 0, Math.PI * 2);
+        context.fillStyle = level ? "rgba(73,104,112,.42)" : "rgba(64,79,94,.24)";
         context.fill();
+        context.beginPath();
+        context.arc(x, y, baseRadius, 0, Math.PI * 2);
+        context.fillStyle = level ? "#20313b" : heightColors[0];
+        context.fill();
+
+        if (level > 0) {
+          context.beginPath();
+          context.moveTo(x, y);
+          context.lineTo(tipX, tipY);
+          context.strokeStyle = level === 3 ? "rgba(216,247,243,.58)" : "rgba(110,155,151,.48)";
+          context.lineWidth = Math.max(1, baseRadius * .85);
+          context.stroke();
+          context.beginPath();
+          context.arc(tipX, tipY, baseRadius * (1.02 + level * .12), 0, Math.PI * 2);
+          context.fillStyle = heightColors[level];
+          context.fill();
+          if (level === 3) {
+            context.beginPath();
+            context.arc(tipX - baseRadius * .28, tipY - baseRadius * .28, Math.max(.55, baseRadius * .24), 0, Math.PI * 2);
+            context.fillStyle = "rgba(255,255,255,.9)";
+            context.fill();
+          }
+        }
       }
     }
-    if (running && time - animationStarted < 4800) frameRequest = window.requestAnimationFrame(draw);
-    else running = false;
   }
 
-  function setPaused(paused) {
-    const nextRunning = !paused && !reducedMotion;
-    if (nextRunning !== running) {
-      running = nextRunning;
-      window.cancelAnimationFrame(frameRequest);
-      if (running) frameRequest = window.requestAnimationFrame(draw);
-      else draw(performance.now());
+  function animate(time) {
+    if (!active || reducedMotion || document.hidden) {
+      frameRequest = 0;
+      return;
     }
-    const isPaused = !running;
+    if (time - lastPaint >= 32) {
+      draw(time);
+      lastPaint = time;
+    }
+    frameRequest = window.requestAnimationFrame(animate);
   }
 
-  canvas.addEventListener("pointermove", (event) => {
+  function startAnimation() {
+    if (!frameRequest && active && !reducedMotion && !document.hidden) frameRequest = window.requestAnimationFrame(animate);
+  }
+
+  function setActive(nextActive) {
+    active = Boolean(nextActive);
+    window.cancelAnimationFrame(frameRequest);
+    frameRequest = 0;
+    draw(performance.now());
+    startAnimation();
+  }
+
+  parent?.addEventListener("pointermove", (event) => {
     const rect = canvas.getBoundingClientRect();
     pointerX = (event.clientX - rect.left) / Math.max(rect.width, 1);
     pointerY = (event.clientY - rect.top) / Math.max(rect.height, 1);
+    pointerInside = true;
+    if (reducedMotion) draw(performance.now());
   });
+  parent?.addEventListener("pointerleave", () => { pointerInside = false; });
+  document.addEventListener("visibilitychange", startAnimation);
   window.addEventListener("resize", resize);
   resize();
-  draw();
-  setPaused(reducedMotion);
-  return { setPaused };
+  return { setActive };
 }
 
 ui.routeButtons.forEach((button) => button.addEventListener("click", (event) => {
@@ -802,7 +884,7 @@ ui.surface3d.addEventListener("pinselect", (event) => {
   speak(region?.speech || `第 ${event.detail.y + 1} 行，第 ${event.detail.x + 1} 列，高度 H${event.detail.level}`);
 });
 
-initHeroField(ui.heroField);
+heroFieldController = initHeroField(ui.heroField);
 setMode("direct");
 setWorkspaceStep("source");
 setRoute(window.location.hash.slice(1) || "home", false);

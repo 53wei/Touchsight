@@ -58,10 +58,10 @@ h1, h2, h3, h4 { scroll-margin-top: calc(var(--header-h) + 16px); }
 .app-page.active { animation: page-enter .42s cubic-bezier(.22,1,.36,1) both; }
 @keyframes page-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-.home-page { position: relative; isolation: isolate; display: flex; align-items: center; overflow: hidden; padding: clamp(34px, 5vw, 76px); }
-#heroField { position: absolute; z-index: -3; inset: 0; width: 100%; height: 100%; }
-.home-vignette { position: absolute; z-index: -2; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(7,9,16,.94) 0%, rgba(7,9,16,.68) 46%, rgba(7,9,16,.12) 100%); }
-.home-copy { width: min(820px, 70vw); padding-bottom: 0; }
+.home-page { position: relative; isolation: isolate; display: flex; align-items: center; overflow: hidden; padding: clamp(34px, 5vw, 76px); background: #070910; }
+#heroField { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; }
+.home-vignette { position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(7,9,16,.98) 0%, rgba(7,9,16,.9) 34%, rgba(7,9,16,.46) 55%, rgba(7,9,16,.04) 77%); }
+.home-copy { position: relative; z-index: 2; width: min(820px, 70vw); padding-bottom: 0; }
 .home-copy h1 { max-width: 780px; margin: 0; font-family: Bahnschrift, "Arial Narrow", sans-serif; font-size: clamp(48px, 6.6vw, 104px); font-weight: 500; line-height: .98; letter-spacing: -.045em; text-wrap: balance; }
 .home-copy > p { max-width: 660px; margin: 28px 0 34px; color: #bcc8d2; font-size: clamp(16px, 1.35vw, 20px); line-height: 1.75; }
 .launch-actions { display: grid; grid-template-columns: minmax(320px, 1.2fr) minmax(280px, .9fr); gap: 10px; max-width: 820px; }
@@ -260,7 +260,7 @@ pre { max-height: 260px; overflow: auto; padding: 12px; border-radius: var(--rad
   .primary-nav { justify-self: end; }
   .studio-page { grid-template-columns: minmax(330px, 390px) 1fr; }
   .home-copy { width: min(850px, 88vw); }
-  .home-vignette { background: linear-gradient(90deg, rgba(7,9,16,.94), rgba(7,9,16,.48)); }
+  .home-vignette { background: linear-gradient(90deg, rgba(7,9,16,.97) 0%, rgba(7,9,16,.84) 48%, rgba(7,9,16,.18) 88%); }
   .device-page { grid-template-columns: 1fr; gap: 54px; }
   .device-diagram { min-height: 300px; }
 }
@@ -275,7 +275,7 @@ pre { max-height: 260px; overflow: auto; padding: 12px; border-radius: var(--rad
   .app-main { height: auto; min-height: calc(100dvh - var(--header-h)); }
   .app-page { min-height: calc(100dvh - var(--header-h)); height: auto; }
   .home-page { align-items: flex-start; min-height: calc(100dvh - var(--header-h)); padding: 44px max(20px, env(safe-area-inset-right)) calc(54px + env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
-  .home-vignette { background: linear-gradient(180deg, rgba(7,9,16,.92), rgba(7,9,16,.4) 66%, rgba(7,9,16,.9)); }
+  .home-vignette { background: linear-gradient(180deg, rgba(7,9,16,.97) 0%, rgba(7,9,16,.88) 48%, rgba(7,9,16,.18) 72%, rgba(7,9,16,.62) 100%); }
   .home-copy { width: 100%; padding: 0; }
   .home-copy h1 { font-size: clamp(43px, 13.5vw, 72px); }
   .home-copy > p { margin: 22px 0 28px; font-size: 15px; }

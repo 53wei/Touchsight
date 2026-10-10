@@ -683,33 +683,18 @@ function initHeroField(canvas) {
     const fieldHeight = height * (mobile ? .5 : .78);
     const gap = Math.max(mobile ? 6.2 : 8, Math.min(22, fieldHeight / (rows - 1), width * (mobile ? .96 : .48) / (cols - 1)));
     const gridHeight = gap * (rows - 1);
-    const centerX = width * (mobile ? .62 : .79) + (pointerX - .5) * (mobile ? 5 : 12);
+    const centerX = width * (mobile ? .62 : .755) + (pointerX - .5) * (mobile ? 5 : 10);
     const centerY = height * (mobile ? .75 : .5) + (pointerY - .5) * (mobile ? 4 : 8);
     const top = centerY - gridHeight / 2;
-    const topHalf = gap * (cols - 1) * .45;
-    const bottomHalf = gap * (cols - 1) * .5;
-    const boardPad = gap * 1.15;
     const seconds = reducedMotion ? 0 : time * .001;
     const scanCenter = reducedMotion ? 31 : ((seconds * 3.2) % (rows + 22)) - 11;
 
-    const halo = context.createRadialGradient(centerX, centerY, gap * 2, centerX, centerY, gridHeight * .62);
-    halo.addColorStop(0, "rgba(140,232,220,.105)");
-    halo.addColorStop(.58, "rgba(72,119,126,.035)");
+    const halo = context.createRadialGradient(centerX, centerY, gap * 2, centerX, centerY, gridHeight * .68);
+    halo.addColorStop(0, "rgba(140,232,220,.07)");
+    halo.addColorStop(.58, "rgba(72,119,126,.022)");
     halo.addColorStop(1, "rgba(7,9,16,0)");
     context.fillStyle = halo;
     context.fillRect(Math.max(0, centerX - gridHeight), 0, Math.min(width, gridHeight * 2), height);
-
-    context.beginPath();
-    context.moveTo(centerX - topHalf - boardPad, top - boardPad);
-    context.lineTo(centerX + topHalf + boardPad, top - boardPad);
-    context.lineTo(centerX + bottomHalf + boardPad, top + gridHeight + boardPad);
-    context.lineTo(centerX - bottomHalf - boardPad, top + gridHeight + boardPad);
-    context.closePath();
-    context.fillStyle = "rgba(11,17,26,.66)";
-    context.fill();
-    context.strokeStyle = "rgba(216,247,243,.13)";
-    context.lineWidth = 1;
-    context.stroke();
 
     for (let row = 0; row < rows; row += 1) {
       const rowProgress = row / (rows - 1);
@@ -722,6 +707,8 @@ function initHeroField(canvas) {
         const curveDistance = Math.abs(row - curveRow);
         const scanDistance = Math.abs(row - (scanCenter + col * .14));
         const pointerDistance = Math.hypot(x - pointerX * width, y - pointerY * height) / Math.max(gap, 1);
+        const edgeDistance = Math.min(col, cols - 1 - col, row, rows - 1 - row);
+        const edgeFade = Math.max(0, Math.min(1, edgeDistance / 5));
         let level = curveDistance < .58 ? 3 : curveDistance < 1.35 ? 2 : curveDistance < 2.15 ? 1 : 0;
         if (!reducedMotion && scanDistance < 1.25) level = Math.max(level, scanDistance < .42 ? 2 : 1);
         if (pointerInside && pointerDistance < 4.8) {
@@ -734,6 +721,7 @@ function initHeroField(canvas) {
         const tipX = x - lift * .34;
         const tipY = y - lift;
 
+        context.globalAlpha = level ? .28 + edgeFade * .72 : .06 + edgeFade * .32;
         context.beginPath();
         context.arc(x, y, baseRadius * 1.55, 0, Math.PI * 2);
         context.fillStyle = level ? "rgba(73,104,112,.42)" : "rgba(64,79,94,.24)";
@@ -761,6 +749,7 @@ function initHeroField(canvas) {
             context.fill();
           }
         }
+        context.globalAlpha = 1;
       }
     }
   }

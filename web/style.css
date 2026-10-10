@@ -60,7 +60,7 @@ h1, h2, h3, h4 { scroll-margin-top: calc(var(--header-h) + 16px); }
 
 .home-page { position: relative; isolation: isolate; display: flex; align-items: center; overflow: hidden; padding: clamp(34px, 5vw, 76px); background: #070910; }
 #heroField { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; }
-.home-vignette { position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(7,9,16,.98) 0%, rgba(7,9,16,.9) 34%, rgba(7,9,16,.46) 55%, rgba(7,9,16,.04) 77%); }
+.home-vignette { position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(7,9,16,.985) 0%, rgba(7,9,16,.92) 34%, rgba(7,9,16,.6) 54%, rgba(7,9,16,.2) 72%, rgba(7,9,16,.03) 92%); }
 .home-copy { position: relative; z-index: 2; width: min(820px, 70vw); padding-bottom: 0; }
 .home-copy h1 { max-width: 780px; margin: 0; font-family: Bahnschrift, "Arial Narrow", sans-serif; font-size: clamp(48px, 6.6vw, 104px); font-weight: 500; line-height: .98; letter-spacing: -.045em; text-wrap: balance; }
 .home-copy > p { max-width: 660px; margin: 28px 0 34px; color: #bcc8d2; font-size: clamp(16px, 1.35vw, 20px); line-height: 1.75; }
@@ -260,7 +260,7 @@ pre { max-height: 260px; overflow: auto; padding: 12px; border-radius: var(--rad
   .primary-nav { justify-self: end; }
   .studio-page { grid-template-columns: minmax(330px, 390px) 1fr; }
   .home-copy { width: min(850px, 88vw); }
-  .home-vignette { background: linear-gradient(90deg, rgba(7,9,16,.97) 0%, rgba(7,9,16,.84) 48%, rgba(7,9,16,.18) 88%); }
+  .home-vignette { background: linear-gradient(90deg, rgba(7,9,16,.98) 0%, rgba(7,9,16,.88) 44%, rgba(7,9,16,.42) 68%, rgba(7,9,16,.06) 94%); }
   .device-page { grid-template-columns: 1fr; gap: 54px; }
   .device-diagram { min-height: 300px; }
 }

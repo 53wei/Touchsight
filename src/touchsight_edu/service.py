@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 from pathlib import Path
 import threading
 
@@ -17,6 +18,7 @@ class TouchSightService:
         self._lock = threading.RLock()
         self._frame_id = 0
         self._revision = 0
+        self._latest_generation_id = 0
         self.planner = TeachingPlanner()
         self.scene_compiler = SceneCompiler()
         self.simulator = SimulatorAdapter()
@@ -34,14 +36,47 @@ class TouchSightService:
             self._frame_id += 1
             return self._frame_id
 
-    def _publish_surface(self, surface: CompiledSurface, *, save_history: bool = True) -> dict:
-        self.simulator.publish(surface.frame)
-        if save_history:
-            try:
-                self.history.save(surface)
-            except OSError as exc:
-                surface.warnings.append(f"历史记录保存失败：{exc}")
+    def _reserve_generation(self, payload: dict | None) -> int:
+        if not payload:
+            return 0
+        try:
+            generation_id = max(0, int(payload.get("generation_id") or 0))
+        except (TypeError, ValueError):
+            generation_id = 0
         with self._lock:
+            self._latest_generation_id = max(self._latest_generation_id, generation_id)
+        return generation_id
+
+    @staticmethod
+    def _source_context(image_data_url: str, payload: dict | None = None) -> dict[str, str]:
+        if not image_data_url:
+            return {}
+        source_name = str((payload or {}).get("source_name") or "当前上传图片").strip()
+        return {
+            "source_name": source_name[:160],
+            "source_fingerprint": hashlib.sha256(
+                image_data_url.encode("utf-8")
+            ).hexdigest()[:12],
+        }
+
+    def _publish_surface(
+        self,
+        surface: CompiledSurface,
+        *,
+        save_history: bool = True,
+        generation_id: int = 0,
+    ) -> dict:
+        with self._lock:
+            if generation_id and generation_id < self._latest_generation_id:
+                snapshot = self.snapshot()
+                snapshot["discarded"] = True
+                return snapshot
+            self.simulator.publish(surface.frame)
+            if save_history:
+                try:
+                    self.history.save(surface)
+                except OSError as exc:
+                    surface.warnings.append(f"历史记录保存失败：{exc}")
             self.surface = surface
             self._revision += 1
             return self.snapshot()
@@ -69,12 +104,17 @@ class TouchSightService:
             },
         }
 
-    def compile_direct(self, image_data_url: str) -> dict:
+    def compile_direct(self, image_data_url: str, payload: dict | None = None) -> dict:
+        generation_id = self._reserve_generation(payload)
+        surface = compile_direct(image_data_url, frame_id=self._next_frame_id())
+        surface.context.update(self._source_context(image_data_url, payload))
         return self._publish_surface(
-            compile_direct(image_data_url, frame_id=self._next_frame_id())
+            surface,
+            generation_id=generation_id,
         )
 
     def compile_teaching(self, payload: dict) -> dict:
+        generation_id = self._reserve_generation(payload)
         image_data_url = str(payload.get("image_data_url") or "").strip() or None
         render_intent = str(payload.get("render_intent") or "").strip()
         if render_intent == "extract_subject":
@@ -90,14 +130,17 @@ class TouchSightService:
             image_data_url=image_data_url,
             render_intent=render_intent,
         )
+        if image_data_url:
+            scene.context.update(self._source_context(image_data_url, payload))
         surface = self.scene_compiler.compile(
             scene,
             frame_id=self._next_frame_id(),
             warnings=warnings,
         )
-        return self._publish_surface(surface)
+        return self._publish_surface(surface, generation_id=generation_id)
 
     def compile_teaching_image(self, payload: dict) -> dict:
+        generation_id = self._reserve_generation(payload)
         image_data_url = str(payload.get("image_data_url") or "").strip()
         if not image_data_url:
             raise ValueError("请先上传要直接转换的教学图片")
@@ -136,7 +179,11 @@ class TouchSightService:
                 semantic_kind="image",
             )
             planner_warnings = [f"未配置模型，文字教学说明使用本地模板：{exc}"]
-        context = {**scene.context, **direct.context}
+        context = {
+            **scene.context,
+            **direct.context,
+            **self._source_context(image_data_url, payload),
+        }
         surface = CompiledSurface(
             frame=direct.frame,
             mode="ai-image",
@@ -171,7 +218,7 @@ class TouchSightService:
                 *planner_warnings,
             ],
         )
-        return self._publish_surface(surface)
+        return self._publish_surface(surface, generation_id=generation_id)
 
     def list_history(self) -> dict:
         return {"ok": True, "items": self.history.list()}
@@ -180,7 +227,8 @@ class TouchSightService:
         surface = self.history.restore(history_id, frame_id=self._next_frame_id())
         return self._publish_surface(surface, save_history=False)
 
-    def revise(self, command: str) -> dict:
+    def revise(self, command: str, payload: dict | None = None) -> dict:
+        generation_id = self._reserve_generation(payload)
         with self._lock:
             current = deepcopy(self.surface)
         if current.mode != "ai" or current.scene is None:
@@ -191,7 +239,7 @@ class TouchSightService:
             frame_id=self._next_frame_id(),
             warnings=current.warnings,
         )
-        return self._publish_surface(surface)
+        return self._publish_surface(surface, generation_id=generation_id)
 
     def publish_hardware(self) -> dict:
         with self._lock:

@@ -82,7 +82,9 @@ def run_server(host: str, port: int, project_root: Path) -> None:
             try:
                 payload = self._request_json()
                 if path == "/api/direct":
-                    self._json(service.compile_direct(str(payload.get("image_data_url") or "")))
+                    self._json(service.compile_direct(
+                        str(payload.get("image_data_url") or ""), payload
+                    ))
                     return
                 if path == "/api/teaching":
                     self._json(service.compile_teaching(payload))
@@ -94,7 +96,7 @@ def run_server(host: str, port: int, project_root: Path) -> None:
                     self._json(service.restore_history(str(payload.get("history_id") or "")))
                     return
                 if path == "/api/revise":
-                    self._json(service.revise(str(payload.get("command") or "")))
+                    self._json(service.revise(str(payload.get("command") or ""), payload))
                     return
                 if path == "/api/hardware/publish":
                     self._json(service.publish_hardware())

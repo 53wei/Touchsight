@@ -48,14 +48,17 @@ class CompilerTests(unittest.TestCase):
             "viewport": {"x_min": -3, "x_max": 3, "y_min": -1, "y_max": 8},
             "primitives": [
                 {"type": "axes", "height": 1, "region_id": 1},
+                {"type": "polyline", "points": [[-3, 0], [3, 0]], "height": 1, "region_id": 3},
                 {"type": "quadratic", "a": 1, "b": 0, "c": 0, "x_min": -3, "x_max": 3, "height": 3, "region_id": 2},
             ],
             "regions": [
                 {"id": 1, "name": "坐标轴"},
                 {"id": 2, "name": "抛物线"},
+                {"id": 3, "name": "X轴刻度与数字"},
             ],
         }, {"render_intent": "extract_subject"})
         self.assertEqual([item["type"] for item in scene.primitives], ["quadratic"])
+        self.assertEqual([item["name"] for item in scene.regions], ["抛物线"])
 
     def test_direct_compiler_contains_whole_image_without_stretch(self):
         surface = compile_direct(test_image_data_url(), frame_id=1)

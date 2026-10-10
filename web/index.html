@@ -66,7 +66,7 @@
           <div class="workflow-scroll">
             <section id="paneSource" class="workflow-pane active" data-workspace-pane="source" role="tabpanel" aria-labelledby="stepSource">
               <div class="mode-switch" aria-label="选择生成入口">
-                <button class="mode-card active" type="button" data-mode="direct"><b>图片直接转点阵</b><small>忠实保留原图结构</small></button>
+                <button class="mode-card active" type="button" data-mode="direct"><b>图片直接转点阵</b><small>普通照片也可转换，保留明暗与轮廓</small></button>
                 <button class="mode-card" type="button" data-mode="ai"><b>AI 教学图</b><small>理解后重建主体</small></button>
               </div>
               <div class="section-heading">
@@ -88,10 +88,10 @@
             <section id="paneIntent" class="workflow-pane" data-workspace-pane="intent" role="tabpanel" aria-labelledby="stepIntent" data-ai-context hidden>
               <div class="section-heading"><div><h3>告诉 AI 这节课要学什么</h3><p>信息越明确，触觉图越干净。上传题目截图时，默认只提取教学主体。</p></div></div>
               <div class="ai-context">
-                <label><span>学科</span><input id="subject" name="subject" value="数学" placeholder="例如：数学、物理、地理…" autocomplete="off" /></label>
-                <label><span>学习目标</span><input id="learningGoal" name="learning-goal" value="理解抛物线的形状" placeholder="例如：理解抛物线的形状…" autocomplete="off" /></label>
-                <label><span>教学内容 / 题目</span><textarea id="lessonContent" name="lesson-content" rows="3" autocomplete="off">识别抛物线的开口方向与曲线轮廓</textarea></label>
-                <label><span>教师指令</span><textarea id="instruction" name="instruction" rows="3" autocomplete="off">只保留抛物线本身，删除题干、公式、数字、字母、刻度和坐标轴。</textarea></label>
+                <label><span>学科</span><input id="subject" name="subject" placeholder="例如：数学、物理、地理…" autocomplete="off" /></label>
+                <label><span>学习目标</span><input id="learningGoal" name="learning-goal" placeholder="例如：理解这张图的主体形状…" autocomplete="off" /></label>
+                <label><span>教学内容 / 题目</span><textarea id="lessonContent" name="lesson-content" rows="3" placeholder="可选：说明这张截图在讲什么" autocomplete="off"></textarea></label>
+                <label><span>教师指令</span><textarea id="instruction" name="instruction" rows="3" autocomplete="off">以当前上传图片为唯一视觉来源，只保留需要触摸的教学主体；删除题干、公式、数字、字母、刻度和坐标轴。</textarea></label>
               </div>
               <div class="ai-render-choice" aria-label="选择教学图生成方式">
                 <button type="button" class="active" data-ai-render="scene" aria-pressed="true"><b>根据文字绘图</b><small>适合函数与简单几何</small></button>

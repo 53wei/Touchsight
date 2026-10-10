@@ -1,5 +1,7 @@
 import { PinRenderer } from "/pin_renderer.js";
 
+const GENERIC_VISION_INSTRUCTION = "以当前上传图片为唯一视觉来源，只保留需要触摸的教学主体；删除题干、公式、数字、字母、刻度和坐标轴。";
+
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -22,6 +24,7 @@ const ui = {
   generationProofDetail: $("#generationProofDetail"), teachingPlan: $("#teachingPlan"),
   teachingSteps: $("#teachingSteps"), loadingTitle: $("#loadingTitle"), loadingHint: $("#loadingHint"),
   generationPhases: $$('[data-generation-phase]'),
+  revisionBlock: $(".revision-block"),
 };
 
 let mode = "direct";
@@ -30,6 +33,10 @@ let aiSupportsVision = false;
 let activeRoute = "home";
 let workspaceStep = "source";
 let imageDataUrl = "";
+let imageSource = null;
+let uploadRevision = 0;
+let generationRevision = 0;
+let activeGenerationController = null;
 let currentSurface = null;
 let shownFrame = null;
 let pinRenderer = null;
@@ -51,6 +58,57 @@ async function request(path, options = {}) {
   const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
   if (!response.ok || payload.ok === false) throw new Error(payload.error || `HTTP ${response.status}`);
   return payload;
+}
+
+async function fingerprintDataUrl(dataUrl) {
+  if (!window.crypto?.subtle) return `local-${dataUrl.length.toString(16)}`;
+  const digest = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(dataUrl));
+  return [...new Uint8Array(digest)].slice(0, 6).map((value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+function nextGenerationIdentity() {
+  const runRevision = ++generationRevision;
+  return {
+    runRevision,
+    generationId: Date.now() * 1000 + (runRevision % 1000),
+  };
+}
+
+function cancelActiveGeneration() {
+  generationRevision += 1;
+  activeGenerationController?.abort();
+  activeGenerationController = null;
+  stopGenerationProgress();
+  ui.loading.hidden = true;
+}
+
+function clearOutputForNewSource(sourceName = "新图片", fingerprint = "") {
+  const frame = { cols: 40, rows: 50, pins: Array(2000).fill(0), frame_id: 0 };
+  currentSurface = null;
+  drawGrid(frame);
+  pinRenderer?.updateFrame(frame);
+  ui.frameIdentity.textContent = `待生成 · ${sourceName}`;
+  ui.frameStats.textContent = fingerprint ? `当前文件 #${fingerprint}` : "尚未生成点阵";
+  ui.title.textContent = "等待根据当前图片生成";
+  ui.summary.textContent = "旧点阵已经清空；点击生成后，只使用当前预览中的图片。";
+  ui.badge.textContent = "PENDING";
+  ui.matrix.textContent = "等待当前图片生成…";
+  ui.regions.replaceChildren();
+  ui.warnings.replaceChildren();
+  const notice = document.createElement("div");
+  notice.className = "warning";
+  notice.textContent = "已切换到新图片。旧结果只保留在历史记录中，不会继续显示或覆盖本次生成。";
+  ui.warnings.append(notice);
+  ui.generationProof.hidden = true;
+  ui.teachingPlan.hidden = true;
+  ui.publish.disabled = true;
+  ui.commandButton.disabled = true;
+}
+
+function resetAiContextForNewImage() {
+  ui.learningGoal.value = "";
+  ui.lessonContent.value = "";
+  ui.instruction.value = GENERIC_VISION_INSTRUCTION;
 }
 
 function setRoute(nextRoute, updateHash = true) {
@@ -174,40 +232,44 @@ function setMode(nextMode) {
 }
 
 function clearImage() {
+  uploadRevision += 1;
+  cancelActiveGeneration();
   imageDataUrl = "";
+  imageSource = null;
   ui.file.value = "";
   ui.preview.src = "";
   ui.preview.hidden = true;
   ui.empty.hidden = false;
   ui.meta.textContent = mode === "ai" ? "图片可选" : "等待图片";
   if (mode === "ai") setAiRenderMode("scene");
+  clearOutputForNewSource("等待图片");
   updateAvailability();
-}
-
-function markOutputStale() {
-  if (!currentSurface || currentSurface.mode === "idle") return;
-  ui.frameIdentity.textContent = `新图片已载入 · 当前仍显示旧 Frame #${currentSurface.frame.frame_id}`;
-  const item = document.createElement("div");
-  item.className = "warning";
-  item.textContent = "右侧还是上一次的结果。点击生成后才会替换为本次上传图片的点阵。";
-  ui.warnings.prepend(item);
 }
 
 function acceptFile(file) {
   if (!file || !file.type.startsWith("image/")) return toast("请选择 PNG、JPEG 或 WebP 图片。", true);
   if (file.size > 12 * 1024 * 1024) return toast("图片不能超过 12 MB。", true);
+  const candidateRevision = ++uploadRevision;
+  cancelActiveGeneration();
   const reader = new FileReader();
-  reader.onload = () => {
-    imageDataUrl = String(reader.result || "");
+  reader.onload = async () => {
+    const nextImageDataUrl = String(reader.result || "");
+    const fingerprint = await fingerprintDataUrl(nextImageDataUrl);
+    if (candidateRevision !== uploadRevision) return;
+    imageDataUrl = nextImageDataUrl;
+    imageSource = { name: file.name, size: file.size, lastModified: file.lastModified, fingerprint };
     ui.preview.src = imageDataUrl;
     ui.preview.hidden = false;
     ui.empty.hidden = true;
     ui.meta.textContent = `${file.name} · ${(file.size / 1024).toFixed(0)} KB`;
-    if (mode === "ai") setAiRenderMode(aiSupportsVision ? "vision" : "image");
-    markOutputStale();
+    if (mode === "ai") {
+      resetAiContextForNewImage();
+      setAiRenderMode(aiSupportsVision ? "vision" : "image");
+    }
+    clearOutputForNewSource(file.name, fingerprint);
     toast(mode === "ai"
-      ? `新图片已载入，已选择“${aiSupportsVision ? "看图提取主体" : "原图直接转点阵"}”。`
-      : "新图片已载入。" );
+      ? `已切换到 ${file.name}；旧教学描述已清除，当前选择“${aiSupportsVision ? "看图提取主体" : "原图直接转点阵"}”。`
+      : `已切换到 ${file.name}；旧点阵已清空。`);
     updateAvailability();
   };
   reader.onerror = () => toast("图片读取失败。", true);
@@ -301,14 +363,20 @@ function stopGenerationProgress() {
 function renderGenerationProof(surface) {
   const context = surface.context || {};
   const source = context.generation_source || (surface.mode === "direct" ? "direct-compiler" : "unknown");
+  const sourceLabel = context.source_name
+    ? `来源：${context.source_name}${context.source_fingerprint ? ` · 文件指纹 #${context.source_fingerprint}` : ""}`
+    : "";
   ui.generationProof.hidden = false;
   ui.generationProof.classList.toggle("offline", source !== "model");
-  if (source === "model") {
+  if (surface.mode === "ai-image") {
+    ui.generationProofTitle.textContent = "点阵只取自当前上传图片";
+    ui.generationProofDetail.textContent = `${sourceLabel || "当前图片已绑定"} · AI 仅生成教学说明，不改变图片点阵`;
+  } else if (source === "model") {
     const input = context.generation_input === "image+text" ? "图片 + 教学文字" : "教学文字";
     ui.generationProofTitle.textContent = context.generation_input === "image+text"
       ? "视觉模型已调用并返回教学场景"
       : "文字模型已调用并返回教学场景";
-    ui.generationProofDetail.textContent = `${context.generation_model || "已配置模型"} · 输入：${input} · 输出经确定性点阵编译器校验`;
+    ui.generationProofDetail.textContent = `${context.generation_model || "已配置模型"} · 输入：${input} · 输出经确定性点阵编译器校验${sourceLabel ? ` · ${sourceLabel}` : ""}`;
   } else if (source === "offline-compiler") {
     ui.generationProofTitle.textContent = "本次未调用模型";
     ui.generationProofDetail.textContent = "使用离线函数/几何规则生成；页面不会把它标成 AI 识别结果。";
@@ -317,7 +385,7 @@ function renderGenerationProof(surface) {
     ui.generationProofDetail.textContent = "这条旧记录创建于来源追踪功能上线前，不能据此判断当时是否调用模型。";
   } else {
     ui.generationProofTitle.textContent = "确定性图片转换";
-    ui.generationProofDetail.textContent = "本次直接从图片计算点阵，不需要调用 AI 模型。";
+    ui.generationProofDetail.textContent = `本次直接从图片计算点阵，不需要调用 AI 模型。${sourceLabel ? ` ${sourceLabel}` : ""}`;
   }
 }
 
@@ -397,6 +465,7 @@ function renderSurface(surface) {
   ui.matrix.textContent = matrixText(frame);
   ui.publish.disabled = surface.mode === "idle";
   ui.commandButton.disabled = surface.mode !== "ai";
+  ui.revisionBlock.hidden = surface.mode !== "ai";
   renderGenerationProof(surface);
   renderTeachingPlan(surface);
   ui.warnings.innerHTML = "";
@@ -423,6 +492,13 @@ async function compile() {
     setWorkspaceStep("intent");
     return;
   }
+  const requestedUploadRevision = uploadRevision;
+  const requestedImageDataUrl = imageDataUrl;
+  const requestedSource = imageSource ? { ...imageSource } : null;
+  const { runRevision, generationId } = nextGenerationIdentity();
+  activeGenerationController?.abort();
+  const controller = new AbortController();
+  activeGenerationController = controller;
   ui.loading.hidden = false;
   ui.compile.disabled = true;
   startGenerationProgress(mode === "direct" ? "direct" : aiRenderMode);
@@ -430,15 +506,24 @@ async function compile() {
     const path = mode === "direct"
       ? "/api/direct"
       : aiRenderMode === "image" ? "/api/teaching/image" : "/api/teaching";
-    const body = mode === "direct" ? { image_data_url: imageDataUrl } : {
-      image_data_url: imageDataUrl,
+    const sourceBinding = {
+      generation_id: generationId,
+      source_name: requestedSource?.name || "",
+      source_fingerprint: requestedSource?.fingerprint || "",
+    };
+    const body = mode === "direct" ? { image_data_url: requestedImageDataUrl, ...sourceBinding } : {
+      image_data_url: requestedImageDataUrl,
       subject: ui.subject.value,
       learning_goal: ui.learningGoal.value,
       lesson_content: ui.lessonContent.value,
       instruction: ui.instruction.value,
       render_intent: aiRenderMode === "vision" ? "extract_subject" : "",
+      ...sourceBinding,
     };
-    const payload = await request(path, { method: "POST", body: JSON.stringify(body) });
+    const payload = await request(path, {
+      method: "POST", body: JSON.stringify(body), signal: controller.signal,
+    });
+    if (runRevision !== generationRevision || requestedUploadRevision !== uploadRevision || payload.discarded) return;
     renderSurface(payload.surface);
     await refreshHistory();
     setWorkspaceStep("result");
@@ -450,31 +535,46 @@ async function compile() {
           : aiRenderMode === "vision" ? "视觉模型已提取教学主体并生成点阵。" : "AI 教学触觉图已经生成。"
     );
   } catch (error) {
-    toast(error.message, true);
+    if (error.name !== "AbortError" && runRevision === generationRevision) toast(error.message, true);
   } finally {
-    stopGenerationProgress();
-    ui.loading.hidden = true;
-    updateAvailability();
+    if (runRevision === generationRevision) {
+      activeGenerationController = null;
+      stopGenerationProgress();
+      ui.loading.hidden = true;
+      updateAvailability();
+    }
   }
 }
 
 async function revise(command) {
   if (!command.trim()) return;
+  const { runRevision, generationId } = nextGenerationIdentity();
+  activeGenerationController?.abort();
+  const controller = new AbortController();
+  activeGenerationController = controller;
   ui.loading.hidden = false;
   ui.commandButton.disabled = true;
   startGenerationProgress("revision");
   try {
-    const payload = await request("/api/revise", { method: "POST", body: JSON.stringify({ command }) });
+    const payload = await request("/api/revise", {
+      method: "POST",
+      body: JSON.stringify({ command, generation_id: generationId }),
+      signal: controller.signal,
+    });
+    if (runRevision !== generationRevision || payload.discarded) return;
     renderSurface(payload.surface);
     await refreshHistory();
     ui.command.value = "";
     toast("下一帧已经生成。" );
   } catch (error) {
-    toast(error.message, true);
+    if (error.name !== "AbortError" && runRevision === generationRevision) toast(error.message, true);
   } finally {
-    stopGenerationProgress();
-    ui.loading.hidden = true;
-    ui.commandButton.disabled = currentSurface?.mode !== "ai";
+    if (runRevision === generationRevision) {
+      activeGenerationController = null;
+      stopGenerationProgress();
+      ui.loading.hidden = true;
+      ui.commandButton.disabled = currentSurface?.mode !== "ai";
+    }
   }
 }
 
@@ -645,7 +745,11 @@ ui.stepButtons.forEach((button) => {
 window.addEventListener("popstate", () => setRoute(window.location.hash.slice(1), false));
 ui.modeCards.forEach((card) => card.addEventListener("click", () => setMode(card.dataset.mode)));
 ui.aiRenderButtons.forEach((button) => button.addEventListener("click", () => setAiRenderMode(button.dataset.aiRender)));
-ui.file.addEventListener("change", () => acceptFile(ui.file.files[0]));
+ui.file.addEventListener("change", () => {
+  const file = ui.file.files[0];
+  ui.file.value = "";
+  acceptFile(file);
+});
 ui.clear.addEventListener("click", clearImage);
 ui.compile.addEventListener("click", compile);
 [ui.learningGoal, ui.lessonContent, ui.instruction].forEach((field) => field.addEventListener("input", updateAvailability));

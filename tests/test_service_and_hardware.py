@@ -67,6 +67,24 @@ class ServiceAndHardwareTests(unittest.TestCase):
             self.assertEqual(restored["frame"]["pins"], first["frame"]["pins"])
             self.assertEqual(restored["frame"]["frame_id"], 3)
 
+    def test_older_generation_cannot_replace_new_upload(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+            service = TouchSightService(Path(directory))
+            newer = service.compile_direct(teaching_image("circle"), {
+                "generation_id": 200,
+                "source_name": "new-circle.png",
+            })
+            stale = service.compile_direct(teaching_image("diagonal"), {
+                "generation_id": 100,
+                "source_name": "old-diagonal.png",
+            })
+            self.assertTrue(stale["discarded"])
+            self.assertEqual(
+                stale["surface"]["context"]["source_fingerprint"],
+                newer["surface"]["context"]["source_fingerprint"],
+            )
+            self.assertEqual(stale["surface"]["context"]["source_name"], "new-circle.png")
+
     def test_vision_extraction_requires_a_configured_vision_model(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
             service = TouchSightService(Path(directory))

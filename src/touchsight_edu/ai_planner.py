@@ -17,6 +17,7 @@ SUPPORTED_PRIMITIVES = {"axes", "quadratic", "polyline", "polygon", "point"}
 SYSTEM_PROMPT = """你是盲校 STEM 教师和触觉图规划器。根据学科、学习目标、教学内容、教师指令以及可选图片，决定学生现在应该摸到什么。
 你不直接输出像素矩阵，而是输出一个可被确定性编译器栅格化的 TactileScene。目标设备是40列×50行、H0-H3四级高度；应保留教学所需结构，同时删掉装饰和题干文字，不生成盲文，不让图形粘成实心块。
 如果输入是题目截图，必须区分“教学主体”和“题目呈现条件”。当要求提取主体时，只重建需要触摸的曲线或几何轮廓；公式、题干、选项、坐标文字、刻度和坐标轴都不得进入触觉图。不要把整张截图当作图片描边。
+只要提供了图片，当前图片就是唯一的视觉事实来源。不得复用示例、历史图片或文字中提到但图片里没有出现的图形；图片与文字冲突时，以图片为准。如果无法从图片确认具体公式，就用 polyline 重建可见主体轮廓，不得猜成抛物线。
 
 只允许这些 primitive：
 - {"type":"axes","height":1..3,"region_id":正整数}
@@ -26,6 +27,7 @@ SYSTEM_PROMPT = """你是盲校 STEM 教师和触觉图规划器。根据学科�
 
 坐标使用数学坐标，viewport 给出 x_min/x_max/y_min/y_max。只输出单个 JSON object：
 {"title":"...","summary":"适合朗读的简短说明","semantic_kind":"graph|geometry|diagram","viewport":{"x_min":-2.5,"x_max":2.5,"y_min":-0.5,"y_max":6},"primitives":[...],"regions":[{"id":1,"name":"...","description":"...","speech":"..."}]}
+title、summary、regions 中的 name、description、speech 必须使用简体中文。
 每个 primitive 的 region_id 必须在 regions 定义。优先用H3表示当前重点、H2表示对比对象、H1表示辅助结构。"""
 
 
@@ -191,12 +193,31 @@ def validate_scene_payload(payload: dict[str, Any], context: dict[str, str]) -> 
         semantic_kind=str(payload.get("semantic_kind") or "diagram"),
     )
     if context.get("render_intent") == "extract_subject":
+        excluded_region_ids = {
+            int(region.get("id", 0))
+            for region in clean_regions
+            if any(
+                keyword in (
+                    str(region.get("name") or "")
+                    + " "
+                    + str(region.get("description") or "")
+                ).lower()
+                for keyword in (
+                    "坐标轴", "x轴", "y轴", "横轴", "纵轴", "刻度", "标签",
+                    "公式", "题干", "文字", "数字", "箭头", "axis", "label",
+                    "tick", "formula", "text", "number", "arrow",
+                )
+            )
+        }
         scene.primitives = [
             primitive for primitive in scene.primitives
             if primitive.get("type") != "axes"
+            and int(primitive.get("region_id", 0)) not in excluded_region_ids
         ]
         if not scene.primitives:
             raise ValueError("视觉模型没有提取出可显示的主体图形")
+        retained_ids = {int(item.get("region_id", 0)) for item in scene.primitives}
+        scene.regions = [item for item in scene.regions if int(item.get("id", 0)) in retained_ids]
     return scene
 
 
@@ -246,8 +267,11 @@ class CompatibleVisionPlanner:
         )
         if context.get("render_intent") == "extract_subject":
             user_text += (
-                "\n输出模式：AI看图提取主体。只重建教师要学生触摸的主要曲线或轮廓；"
-                "删除题干、公式、坐标轴、刻度、字母、箭头和其他条件信息。"
+                "\n输出模式：AI看图提取主体。必须只观察本次随消息附带的图片，"
+                "不得复用之前图片或被文字暗示但当前图片中不存在的图形。"
+                "只重建教师要学生触摸的主要曲线或轮廓；删除题干、公式、坐标轴、"
+                "刻度、数字、字母、箭头和其他条件信息。无法确定公式时，用 polyline"
+                "忠实近似当前图片里实际可见的主体，不得猜测函数类型。"
             )
         if image_data_url:
             decode_image_data_url(image_data_url)

@@ -135,7 +135,15 @@
           </div>
           <div class="surface-wrap">
             <canvas id="grid2d" width="800" height="1000" aria-label="40 列 50 行触觉高度矩阵"></canvas>
-            <div id="surface3d" class="surface-3d" hidden aria-label="40 列 50 行触觉板三维模拟"></div>
+            <div id="surface3d" class="surface-3d" tabindex="0" hidden aria-label="可旋转、缩放和平移的 40 列 50 行触觉板三维模拟" aria-describedby="surface3dHint">
+              <div class="three-controls" role="group" aria-label="3D 视图控制">
+                <button type="button" data-3d-action="zoom-in" aria-label="放大 3D 视图">＋</button>
+                <button type="button" data-3d-action="zoom-out" aria-label="缩小 3D 视图">－</button>
+                <button type="button" data-3d-action="fit">适应画布</button>
+                <button type="button" data-3d-action="reset">重置视角</button>
+              </div>
+              <small id="surface3dHint" class="three-hint">拖动旋转 · 滚轮缩放 · Shift / 右键拖动平移</small>
+            </div>
             <div id="loading" class="loading" role="status" aria-live="polite" hidden>
               <span class="scan-orbit" aria-hidden="true"></span>
               <b id="loadingTitle">正在理解并重建触觉结构…</b>

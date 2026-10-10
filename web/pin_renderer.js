@@ -7,9 +7,9 @@ try {
 
 /*
  * The surface is a digital twin of the current high-density target pin plate. The default
- * view is an orthographic top view: no perspective skew and no semantic color
- * encoding. Raised pins are white and fully lowered pins are black so a judge
- * can read the intended physical state immediately. UInt8 height remains real
+ * 3D view always fits the full board first, then lets the user orbit, zoom and
+ * pan it. Raised pins are white and fully lowered pins are black so a judge can
+ * read the intended physical state immediately. UInt8 height remains real
  * extrusion and is still legible through the rim and neutral cast shadow.
  */
 export class PinRenderer {
@@ -18,13 +18,13 @@ export class PinRenderer {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xf1f2ef);
 
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
+    this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 1000);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.7));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    container.appendChild(this.renderer.domElement);
+    container.prepend(this.renderer.domElement);
 
     this.pitch = 1.0;
     this.radius = 0.30;
@@ -38,7 +38,16 @@ export class PinRenderer {
     this.motionSpeed = 8.5;
     this.isMoving = false;
     this.lastTick = performance.now();
-    this.viewMode = "top";
+    this.viewMode = "3d";
+    this.defaultYaw = 0.46;
+    this.defaultPitch = 0.88;
+    this.yaw = this.defaultYaw;
+    this.pitchAngle = this.defaultPitch;
+    this.distance = 80;
+    this.fitDistance = 80;
+    this.target = new THREE.Vector3(0, this.maxHeight * 0.5, 0);
+    this.userAdjusted = false;
+    this._drag = null;
 
     this._raisedColor = new THREE.Color(0xffffff);
     this._loweredColor = new THREE.Color(0x050505);
@@ -74,7 +83,7 @@ export class PinRenderer {
     this._resizeObserver.observe(container);
     this._raycaster = new THREE.Raycaster();
     this._pointer = new THREE.Vector2();
-    this.renderer.domElement.addEventListener("pointerdown", (event) => this._selectPin(event));
+    this._bindControls();
     this.resize();
     this.animate();
   }
@@ -144,7 +153,7 @@ export class PinRenderer {
     this.board.receiveShadow = true;
     this.scene.add(this.board);
 
-    this.setTopView();
+    this.resetView();
   }
 
   _applyLevels(values) {
@@ -254,72 +263,185 @@ export class PinRenderer {
     }));
   }
 
-  _updateProjection() {
-    if (!this.cols || !this.rows) return;
-    const width = Math.max(1, this.container.clientWidth);
-    const height = Math.max(1, this.container.clientHeight);
-    const aspect = width / height;
-    const boardW = this.cols * this.pitch;
-    const boardD = this.rows * this.pitch;
-    const edge = this.radius * 1.5;
+  _bindControls() {
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+    canvas.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      this.zoomBy(Math.exp(event.deltaY * 0.0012));
+    }, { passive: false });
+    canvas.addEventListener("pointerdown", (event) => {
+      if (!this.cols || !this.rows) return;
+      const pan = event.shiftKey || event.button === 1 || event.button === 2;
+      this._drag = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        startX: event.clientX,
+        startY: event.clientY,
+        pan,
+      };
+      canvas.setPointerCapture(event.pointerId);
+      this.container.dataset.interacting = "true";
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (!this._drag || this._drag.pointerId !== event.pointerId) return;
+      const dx = event.clientX - this._drag.x;
+      const dy = event.clientY - this._drag.y;
+      this._drag.x = event.clientX;
+      this._drag.y = event.clientY;
+      if (this._drag.pan) this._panByPixels(dx, dy);
+      else {
+        this.yaw -= dx * 0.008;
+        this.pitchAngle = THREE.MathUtils.clamp(this.pitchAngle + dy * 0.008, 0.16, 1.48);
+        this.userAdjusted = true;
+        this._applyCamera();
+      }
+    });
+    const finishPointer = (event) => {
+      if (!this._drag || this._drag.pointerId !== event.pointerId) return;
+      const moved = Math.hypot(event.clientX - this._drag.startX, event.clientY - this._drag.startY);
+      const wasPan = this._drag.pan;
+      this._drag = null;
+      this.container.dataset.interacting = "false";
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      if (moved < 5 && !wasPan && event.button === 0) this._selectPin(event);
+    };
+    canvas.addEventListener("pointerup", finishPointer);
+    canvas.addEventListener("pointercancel", finishPointer);
+    this.container.addEventListener("keydown", (event) => {
+      const key = event.key;
+      if (["+", "=", "-", "0", "Home", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(key)) {
+        event.preventDefault();
+      }
+      if (key === "+" || key === "=") this.zoomBy(0.84);
+      else if (key === "-") this.zoomBy(1.19);
+      else if (key === "0" || key === "Home") this.fitToView({ preserveAngles: true });
+      else if (key.startsWith("Arrow")) {
+        if (event.shiftKey) {
+          const dx = key === "ArrowLeft" ? 24 : key === "ArrowRight" ? -24 : 0;
+          const dy = key === "ArrowUp" ? 24 : key === "ArrowDown" ? -24 : 0;
+          this._panByPixels(dx, dy);
+        } else {
+          if (key === "ArrowLeft") this.yaw += 0.08;
+          if (key === "ArrowRight") this.yaw -= 0.08;
+          if (key === "ArrowUp") this.pitchAngle = Math.max(0.16, this.pitchAngle - 0.06);
+          if (key === "ArrowDown") this.pitchAngle = Math.min(1.48, this.pitchAngle + 0.06);
+          this.userAdjusted = true;
+          this._applyCamera();
+        }
+      }
+    });
+  }
 
-    // Fit the complete 3D bounding box in camera space. Fitting only the flat
-    // board rectangle crops its lower edge after the camera tilts because the
-    // board depth and raised pins both add projected height.
+  _boardBounds() {
+    const edge = this.radius * 1.7;
+    return {
+      minX: -(this.cols * this.pitch) / 2 - edge,
+      maxX: (this.cols * this.pitch) / 2 + edge,
+      minY: -0.35,
+      maxY: this.maxHeight + edge,
+      minZ: -(this.rows * this.pitch) / 2 - edge,
+      maxZ: (this.rows * this.pitch) / 2 + edge,
+    };
+  }
+
+  _applyCamera() {
+    const horizontal = Math.cos(this.pitchAngle);
+    this.camera.position.set(
+      this.target.x + Math.sin(this.yaw) * horizontal * this.distance,
+      this.target.y + Math.sin(this.pitchAngle) * this.distance,
+      this.target.z + Math.cos(this.yaw) * horizontal * this.distance,
+    );
+    this.camera.up.set(0, 1, 0);
+    this.camera.lookAt(this.target);
+    this.camera.near = Math.max(0.05, this.distance / 1000);
+    this.camera.far = Math.max(500, this.distance * 8);
+    this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld(true);
-    const corners = [];
-    for (const x of [-boardW / 2 - edge, boardW / 2 + edge]) {
-      for (const y of [-0.35, this.maxHeight + edge]) {
-        for (const z of [-boardD / 2 - edge, boardD / 2 + edge]) {
-          corners.push(new THREE.Vector3(x, y, z).applyMatrix4(this.camera.matrixWorldInverse));
+  }
+
+  fitToView({ preserveAngles = true } = {}) {
+    if (!this.cols || !this.rows) return;
+    if (!preserveAngles) {
+      this.yaw = this.defaultYaw;
+      this.pitchAngle = this.defaultPitch;
+    }
+    const bounds = this._boardBounds();
+    this.target.set(0, (bounds.minY + bounds.maxY) / 2, 0);
+    this.distance = Math.max(this.cols, this.rows) * this.pitch * 2;
+    this._applyCamera();
+
+    const inverse = this.camera.quaternion.clone().invert();
+    const verticalFov = THREE.MathUtils.degToRad(this.camera.fov);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * this.camera.aspect);
+    const tanX = Math.max(0.01, Math.tan(horizontalFov / 2));
+    const tanY = Math.max(0.01, Math.tan(verticalFov / 2));
+    let required = 1;
+    for (const x of [bounds.minX, bounds.maxX]) {
+      for (const y of [bounds.minY, bounds.maxY]) {
+        for (const z of [bounds.minZ, bounds.maxZ]) {
+          const local = new THREE.Vector3(x, y, z).sub(this.target).applyQuaternion(inverse);
+          required = Math.max(required, local.z + Math.abs(local.x) / tanX, local.z + Math.abs(local.y) / tanY);
         }
       }
     }
-    const minX = Math.min(...corners.map((point) => point.x));
-    const maxX = Math.max(...corners.map((point) => point.x));
-    const minY = Math.min(...corners.map((point) => point.y));
-    const maxY = Math.max(...corners.map((point) => point.y));
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    const contentW = Math.max(1, maxX - minX) * 1.12;
-    const contentH = Math.max(1, maxY - minY) * 1.12;
-    let viewW = contentW;
-    let viewH = contentH;
-    if (aspect >= contentW / contentH) viewW = contentH * aspect;
-    else viewH = contentW / aspect;
-    this.camera.left = centerX - viewW / 2;
-    this.camera.right = centerX + viewW / 2;
-    this.camera.top = centerY + viewH / 2;
-    this.camera.bottom = centerY - viewH / 2;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height, false);
+    this.distance = required * 1.13;
+    this.fitDistance = this.distance;
+    this.userAdjusted = false;
+    this._applyCamera();
   }
 
-  // Orthographic top view is the product default and the RDK default.
+  resetView() {
+    if (!this.cols || !this.rows) return;
+    this.viewMode = "3d";
+    this.yaw = this.defaultYaw;
+    this.pitchAngle = this.defaultPitch;
+    this.fitToView({ preserveAngles: true });
+  }
+
+  zoomBy(factor) {
+    if (!this.cols || !this.rows || !Number.isFinite(factor)) return;
+    const base = Math.max(1, this.fitDistance);
+    this.distance = THREE.MathUtils.clamp(this.distance * factor, base * 0.28, base * 4.5);
+    this.userAdjusted = true;
+    this._applyCamera();
+  }
+
+  _panByPixels(dx, dy) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const worldHeight = 2 * this.distance * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2);
+    const worldWidth = worldHeight * this.camera.aspect;
+    const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
+    this.target.addScaledVector(right, -dx / rect.width * worldWidth);
+    this.target.addScaledVector(up, dy / rect.height * worldHeight);
+    this.userAdjusted = true;
+    this._applyCamera();
+  }
+
+  // Kept for older callers. The dedicated top view is the separate 2D canvas.
   setTopView() {
-    if (!this.cols || !this.rows) return;
-    const span = Math.max(this.cols, this.rows);
-    this.viewMode = "top";
-    this.camera.position.set(0, span * 1.55, 0.001);
-    this.camera.up.set(0, 0, -1);
-    this.camera.lookAt(0, 0, 0);
-    this._updateProjection();
+    this.yaw = 0;
+    this.pitchAngle = 1.47;
+    this.fitToView({ preserveAngles: true });
   }
 
-  // Optional orthographic 2.5D view: still no perspective distortion, only a
-  // shallow elevation so the physical extrusion can be inspected.
   setPerspectiveView() {
-    if (!this.cols || !this.rows) return;
-    const span = Math.max(this.cols, this.rows);
-    this.viewMode = "2.5d";
-    this.camera.position.set(0, span * 1.45, span * 0.36);
-    this.camera.up.set(0, 1, 0);
-    this.camera.lookAt(0, 0, 0);
-    this._updateProjection();
+    this.resetView();
   }
 
   resize() {
-    this._updateProjection();
+    const width = Math.max(1, this.container.clientWidth);
+    const height = Math.max(1, this.container.clientHeight);
+    this.renderer.setSize(width, height, false);
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    if (this.cols && this.rows) {
+      if (!this.userAdjusted) this.fitToView({ preserveAngles: true });
+      else this._applyCamera();
+    }
   }
 
   animate() {

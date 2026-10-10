@@ -25,6 +25,7 @@ const ui = {
   teachingSteps: $("#teachingSteps"), loadingTitle: $("#loadingTitle"), loadingHint: $("#loadingHint"),
   generationPhases: $$('[data-generation-phase]'),
   revisionBlock: $(".revision-block"),
+  threeControls: $$('[data-3d-action]'),
 };
 
 let mode = "direct";
@@ -765,7 +766,14 @@ ui.viewButtons.forEach((button) => button.addEventListener("click", () => {
   const is3d = button.dataset.view === "3d";
   ui.grid.hidden = is3d;
   ui.surface3d.hidden = !is3d;
-  if (is3d) { pinRenderer?.resize(); pinRenderer?.setPerspectiveView(); }
+  if (is3d) { pinRenderer?.resize(); pinRenderer?.resetView(); }
+}));
+ui.threeControls.forEach((button) => button.addEventListener("click", () => {
+  const action = button.getAttribute("data-3d-action");
+  if (action === "zoom-in") pinRenderer?.zoomBy(0.8);
+  else if (action === "zoom-out") pinRenderer?.zoomBy(1.25);
+  else if (action === "fit") pinRenderer?.fitToView({ preserveAngles: true });
+  else if (action === "reset") pinRenderer?.resetView();
 }));
 ui.lower.addEventListener("click", () => {
   if (!shownFrame) return;
